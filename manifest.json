@@ -1,0 +1,17 @@
+{
+  "name": "ARKINA",
+  "short_name": "ARKINA",
+  "description": "Boutique ARKINA — commandez en quelques clics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F5FB",
+  "theme_color": "#2B3BFF",
+  "orientation": "portrait-primary",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "screenshots": [],
+  "categories": ["shopping"]
+}
