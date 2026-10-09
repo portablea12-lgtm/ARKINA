@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debug Admin</title>
+<style>
+body{background:#000;color:#0f0;font-family:monospace;padding:20px;font-size:14px}
+h2{color:#fff;margin-bottom:16px}
+.ok{color:#0f0}.err{color:#f44}.warn{color:#fa0}
+button{background:#222;color:#fff;border:1px solid #555;padding:10px 20px;margin:6px;border-radius:8px;font-size:14px;cursor:pointer}
+button:hover{background:#333}
+pre{background:#111;padding:12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;word-break:break-all;border:1px solid #333}
+</style>
+</head>
+<body>
+<h2>🔧 Diagnostic ARKINA Admin</h2>
+<div id="log"></div>
+<button onclick="runDiag()">▶ Lancer le diagnostic</button>
+<button onclick="killAllSW()">💣 Tuer TOUS les Service Workers</button>
+<button onclick="clearAllCache()">🗑 Vider TOUT le cache</button>
+<button onclick="goAdmin()">➡ Aller sur admin-app.html</button>
+
+<script>
+const SB_URL = "https://nsskercmbmgmdftcpatd.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zc2tlcmNtYm1nbWRmdGNwYXRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NTE4NDMsImV4cCI6MjEwNjUyNzg0M30.Y2imKy5q0JFAJsM70doTtvys5KQR3T26CLgoiLnl5VA";
+
+function log(msg, cls=''){
+  const d = document.createElement('pre');
+  d.className = cls;
+  d.textContent = msg;
+  document.getElementById('log').appendChild(d);
+}
+
+async function runDiag(){
+  document.getElementById('log').innerHTML = '';
+  log('=== DIAGNOSTIC ' + new Date().toLocaleTimeString('fr-FR') + ' ===');
+
+  // 1. Service Workers
+  if('serviceWorker' in navigator){
+    const regs = await navigator.serviceWorker.getRegistrations();
+    log(`Service Workers enregistrés : ${regs.length}`, regs.length>0?'warn':'ok');
+    regs.forEach(r => {
+      log(`  → scope: ${r.scope}\n    active: ${r.active?.scriptURL||'none'}\n    waiting: ${r.waiting?.scriptURL||'none'}\n    installing: ${r.installing?.scriptURL||'none'}`, 'warn');
+    });
+  } else {
+    log('Service Worker : NON SUPPORTÉ', 'err');
+  }
+
+  // 2. Cache Storage
+  if('caches' in window){
+    const keys = await caches.keys();
+    log(`Caches stockés : ${keys.length > 0 ? keys.join(', ') : 'aucun'}`, keys.length>0?'warn':'ok');
+  }
+
+  // 3. Test connexion Supabase
+  log('Test connexion Supabase...');
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/`, {
+      headers: { 'apikey': SB_KEY }
+    });
+    log(`Supabase réponse : ${r.status} ${r.statusText}`, r.ok?'ok':'err');
+  } catch(e) {
+    log(`Supabase ERREUR : ${e.message}`, 'err');
+  }
+
+  // 4. Session Supabase
+  log('Vérification session Supabase...');
+  const stored = localStorage.getItem('sb-nsskercmbmgmdftcpatd-auth-token');
+  if(stored){
+    try {
+      const parsed = JSON.parse(stored);
+      const exp = parsed?.expires_at;
+      const now = Math.floor(Date.now()/1000);
+      const ok = exp && exp > now;
+      log(`Session trouvée : expires ${new Date(exp*1000).toLocaleString('fr-FR')} → ${ok?'VALIDE':'EXPIRÉE'}`, ok?'ok':'err');
+      log(`User email : ${parsed?.user?.email||'?'}`);
+    } catch(e) {
+      log(`Session : impossible de parser (${e.message})`, 'err');
+    }
+  } else {
+    log('Aucune session stockée (pas connecté)', 'warn');
+  }
+
+  // 5. is_admin RPC
+  if(stored){
+    log('Test is_admin()...');
+    try {
+      const parsed = JSON.parse(stored);
+      const token = parsed?.access_token;
+      const r = await fetch(`${SB_URL}/rest/v1/rpc/is_admin`, {
+        method: 'POST',
+        headers: {
+          'apikey': SB_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: '{}'
+      });
+      const data = await r.json();
+      log(`is_admin() → ${JSON.stringify(data)}`, data===true?'ok':'err');
+    } catch(e) {
+      log(`is_admin() ERREUR : ${e.message}`, 'err');
+    }
+  }
+
+  log('=== FIN DIAGNOSTIC ===');
+}
+
+async function killAllSW(){
+  if(!('serviceWorker' in navigator)){ log('SW non supporté', 'err'); return; }
+  const regs = await navigator.serviceWorker.getRegistrations();
+  if(regs.length === 0){ log('Aucun SW à supprimer ✓', 'ok'); return; }
+  for(const r of regs){
+    await r.unregister();
+    log(`✓ Supprimé : ${r.scope}`, 'ok');
+  }
+  log(`${regs.length} service worker(s) supprimé(s). Rechargez la page.`, 'ok');
+}
+
+async function clearAllCache(){
+  if(!('caches' in window)){ log('Cache API non supportée', 'err'); return; }
+  const keys = await caches.keys();
+  if(keys.length === 0){ log('Aucun cache à vider ✓', 'ok'); return; }
+  for(const k of keys){
+    await caches.delete(k);
+    log(`✓ Cache supprimé : ${k}`, 'ok');
+  }
+  log(`${keys.length} cache(s) vidé(s).`, 'ok');
+}
+
+function goAdmin(){
+  window.location.href = '/admin-app.html?v=' + Date.now();
+}
+
+// Auto-lance le diagnostic au chargement
+runDiag();
+</script>
+</body>
+</html>
